@@ -2377,10 +2377,15 @@ var htmx = (function() {
     }
     // store the initial values of the elements, so we can tell if they change
     if (triggerSpec.changed) {
+      if (!("lastValue" in elementData))
+        elementData.lastValue = new WeakMap()
+      if (!("pendingValue" in elementData))
+        elementData.pendingValue = new WeakMap()
+      elementData.lastValue[triggerSpec] = new WeakMap()
+      elementData.pendingValue[triggerSpec] = new Map()
       eltsToListenOn.forEach(function(eltToListenOn) {
-        const eltToListenOnData = getInternalData(eltToListenOn)
         // @ts-ignore value will be undefined for non-input elements, which is fine
-        eltToListenOnData.lastValue = eltToListenOn.value
+        elementData.lastValue[triggerSpec][eltToListenOn] = eltToListenOn.value
       })
     }
     forEach(eltsToListenOn, function(eltToListenOn) {
@@ -2422,13 +2427,33 @@ var htmx = (function() {
             }
           }
           if (triggerSpec.changed) {
-            const eltToListenOnData = getInternalData(eltToListenOn)
+            const lastValue = elementData.lastValue[triggerSpec]
             // @ts-ignore value will be undefined for non-input elements, which is fine
-            const value = eltToListenOn.value
-            if (eltToListenOnData.lastValue === value) {
-              return
+            const value = evt.target.value
+            if (triggerSpec.delay > 0) {
+              /*
+               * The main check for actual "changed" status happens
+               * in the timeout. If node is the only observed node,
+               * the timeout can be skipped/cancelled if the last
+               * committed value is observed again.
+               */
+              const pendingValue = elementData.pendingValue[triggerSpec]
+              if (lastValue[evt.target] === value &&
+                  (pendingValue.size === 0 ||
+                   (pendingValue.size === 1 && evt.target in pendingValue))) {
+                delete pendingValue[evt.target]
+                if (elementData.delayed) {
+                  clearTimeout(elementData.delayed)
+                }
+                return
+              }
+              pendingValue[evt.target] = value
+            } else {
+              if (lastValue[evt.target] === value) {
+                return
+              }
+              lastValue[evt.target] = value
             }
-            eltToListenOnData.lastValue = value
           }
           if (elementData.delayed) {
             clearTimeout(elementData.delayed)
@@ -2447,8 +2472,20 @@ var htmx = (function() {
             }
           } else if (triggerSpec.delay > 0) {
             elementData.delayed = getWindow().setTimeout(function() {
-              triggerEvent(elt, 'htmx:trigger')
-              handler(elt, evt)
+              const lastValue = elementData.lastValue[triggerSpec]
+              const pendingValue = elementData.pendingValue[triggerSpec]
+              let changed = false;
+              for (let node in pendingValue) {
+                if (lastValue[node] !== pendingValue[node]) {
+                  changed = true
+                  lastValue[node] = pendingValue[node]
+                }
+              }
+              elementData.pendingValue[triggerSpec] = new Map()
+              if (changed) {
+                triggerEvent(elt, 'htmx:trigger')
+                handler(elt, evt)
+              }
             }, triggerSpec.delay)
           } else {
             triggerEvent(elt, 'htmx:trigger')
