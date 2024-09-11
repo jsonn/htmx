@@ -313,6 +313,7 @@ var htmx = (function() {
     getAttributeValue,
     getClosestAttributeValue,
     getClosestMatch,
+    getElementValue,
     getExpressionVars,
     getHeaders,
     getInputValues,
@@ -2390,6 +2391,17 @@ var htmx = (function() {
     return false
   }
 
+  /*
+   * @param {Element} elt
+   */
+  function getElementValue(elt) {
+    if (elt.tagName.toLowerCase() == "input" && elt.getAttribute("type") == "checkbox") {
+      return elt.checked ? elt.value : ''
+    }
+    // @ts-ignore value will be undefined for non-input elements, which is fine
+    return elt.value
+  }
+
   /**
    * @param {Node} elt
    * @param {TriggerHandler} handler
@@ -2423,8 +2435,7 @@ var htmx = (function() {
         if (!elementData.lastValue.has(triggerSpec)) {
           elementData.lastValue.set(triggerSpec, new WeakMap())
         }
-        // @ts-ignore value will be undefined for non-input elements, which is fine
-        elementData.lastValue.get(triggerSpec).set(eltToListenOn, eltToListenOn.value)
+        elementData.lastValue.get(triggerSpec).set(eltToListenOn, getElementValue(eltToListenOn))
       })
     }
     forEach(eltsToListenOn, function(eltToListenOn) {
@@ -2467,8 +2478,7 @@ var htmx = (function() {
           }
           if (triggerSpec.changed) {
             const node = event.target
-            // @ts-ignore value will be undefined for non-input elements, which is fine
-            const value = node.value
+            const value = getElementValue(node)
             const lastValue = elementData.lastValue.get(triggerSpec)
             if (triggerSpec.delay > 0) {
               if (!elementData.pendingValue.has(triggerSpec)) {
